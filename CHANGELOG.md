@@ -7,6 +7,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.2] — 2026-08-22
+
+### Fixed
+
+- Shortcuts dispatched through the session agent never tried `ydotool`: the
+  agent's private backend chain was `xdotool` then `wtype`. Under Wayland
+  `xdotool` exits 0 while the compositor routes its synthetic keys to XWayland
+  clients only, so a native Wayland window — or anything reading
+  `/dev/input`, such as an evdev hotkey listener — saw nothing at all, and a
+  `cycle_shortcut` button logged success while doing nothing. The agent now
+  walks the same ranked order as `ActionRunner` (`ydotool` -> `xdotool` ->
+  `wtype` on Wayland), falling through on a non-zero exit or a keysym it
+  cannot translate. Since the daemon delegates every action to the agent when
+  a graphical session is present, this affected all shortcut buttons on
+  Wayland, not just cycling ones.
+
+### Changed
+
+- Backend ranking and argv construction moved into
+  `ulanzi_linux.application.shortcut_backend`, now shared by `ActionRunner`
+  and the session agent. The two had divergent private copies, which is how
+  the agent's path fell behind the documented order in the first place.
+
 ## [0.15.1] — 2026-08-16
 
 ### Fixed

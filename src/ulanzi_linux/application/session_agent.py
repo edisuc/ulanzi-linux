@@ -24,6 +24,10 @@ from typing import Literal
 
 import structlog
 
+from ulanzi_linux.application.shortcut_backend import (
+    shortcut_argv,
+    shortcut_tool_order,
+)
 from ulanzi_linux.domain.button_config import Action, ShellAction, ShortcutAction, UrlAction
 
 logger = structlog.get_logger(__name__)
@@ -315,18 +319,32 @@ class GraphicalSessionAgentServer:
     async def _run_shortcut(self, keys: str) -> dict[str, object]:
         if not keys.strip():
             return {"ok": False, "detail": "empty_shortcut"}
-        if self._which("xdotool"):
-            exit_code = await self._try_exec(["xdotool", "key", keys])
+        last_failure: str | None = None
+        for tool in shortcut_tool_order(self._env):
+            if not self._which(tool):
+                continue
+            argv = shortcut_argv(tool, keys)
+            if argv is None:
+                logger.debug(
+                    "session_agent_shortcut_tool_skipped",
+                    tool=tool,
+                    keys=keys,
+                    reason="keys_not_translatable",
+                )
+                continue
+            exit_code = await self._try_exec(argv)
             if exit_code == 0:
-                logger.info("session_agent_shortcut_sent", keys=keys, tool="xdotool")
-                return {"ok": True, "detail": "xdotool"}
-            return {"ok": False, "detail": f"xdotool_exit_{exit_code}"}
-        if self._which("wtype"):
-            exit_code = await self._try_exec(["wtype", "-M", keys])
-            if exit_code == 0:
-                logger.info("session_agent_shortcut_sent", keys=keys, tool="wtype")
-                return {"ok": True, "detail": "wtype"}
-            return {"ok": False, "detail": f"wtype_exit_{exit_code}"}
+                logger.info("session_agent_shortcut_sent", keys=keys, tool=tool)
+                return {"ok": True, "detail": tool}
+            logger.warning(
+                "session_agent_shortcut_failed",
+                keys=keys,
+                tool=tool,
+                exit_code=exit_code,
+            )
+            last_failure = f"{tool}_exit_{exit_code}"
+        if last_failure is not None:
+            return {"ok": False, "detail": last_failure}
         return {"ok": False, "detail": "no_shortcut_tool"}
 
     async def _run_url(self, raw_url: str) -> dict[str, object]:

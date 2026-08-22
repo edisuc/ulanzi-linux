@@ -123,3 +123,111 @@ async def test_session_agent_client_server_roundtrip(
 
     assert result == SessionAgentDispatchResult(status="accepted", detail="gio")
     assert received == [{"type": "url", "url": "example.com"}]
+
+def _shortcut_server(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    wayland: bool,
+    available: set[str],
+    exit_codes: dict[str, int] | None = None,
+) -> tuple[GraphicalSessionAgentServer, list[list[str]]]:
+    """An agent with a stubbed session type, PATH lookup, and exec."""
+    session_env = (
+        {"WAYLAND_DISPLAY": "wayland-0", "XDG_SESSION_TYPE": "wayland"}
+        if wayland
+        else {"DISPLAY": ":0", "XDG_SESSION_TYPE": "x11"}
+    )
+    server = GraphicalSessionAgentServer(
+        env={"HOME": str(tmp_path), "PATH": "/usr/bin", **session_env}
+    )
+    calls: list[list[str]] = []
+    codes = exit_codes or {}
+
+    async def fake_try_exec(argv: list[str]) -> int:
+        calls.append(argv)
+        return codes.get(argv[0], 0)
+
+    monkeypatch.setattr(
+        server,
+        "_which",
+        lambda executable: (
+            f"/usr/bin/{executable}" if executable in available else None
+        ),
+    )
+    monkeypatch.setattr(server, "_try_exec", fake_try_exec)
+    return server, calls
+
+
+@pytest.mark.asyncio
+async def test_session_agent_shortcut_prefers_ydotool_on_wayland(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The agent runs shortcuts on the daemon's behalf, so it must rank
+    backends the same way ActionRunner does. Under Wayland xdotool exits 0 but
+    its keys reach only XWayland clients — anything reading /dev/input, such as
+    an evdev hotkey listener, never sees them.
+    """
+    server, calls = _shortcut_server(
+        monkeypatch, tmp_path, wayland=True, available={"xdotool", "ydotool"}
+    )
+
+    result = await server._run_shortcut("f14")
+
+    assert result == {"ok": True, "detail": "ydotool"}
+    assert calls == [["ydotool", "key", "184:1", "184:0"]]
+
+
+@pytest.mark.asyncio
+async def test_session_agent_shortcut_prefers_xdotool_on_x11(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    server, calls = _shortcut_server(
+        monkeypatch, tmp_path, wayland=False, available={"xdotool", "ydotool"}
+    )
+
+    result = await server._run_shortcut("f14")
+
+    assert result == {"ok": True, "detail": "xdotool"}
+    assert calls == [["xdotool", "key", "f14"]]
+
+
+@pytest.mark.asyncio
+async def test_session_agent_shortcut_falls_back_when_ydotoold_is_down(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """ydotool exits non-zero without its daemon; the next backend gets a turn."""
+    server, calls = _shortcut_server(
+        monkeypatch,
+        tmp_path,
+        wayland=True,
+        available={"xdotool", "ydotool"},
+        exit_codes={"ydotool": 1},
+    )
+
+    result = await server._run_shortcut("f14")
+
+    assert result == {"ok": True, "detail": "xdotool"}
+    assert calls == [
+        ["ydotool", "key", "184:1", "184:0"],
+        ["xdotool", "key", "f14"],
+    ]
+
+
+@pytest.mark.asyncio
+async def test_session_agent_shortcut_skips_untranslatable_keys_for_ydotool(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A keysym outside the table must not be dropped — xdotool still knows it."""
+    server, calls = _shortcut_server(
+        monkeypatch, tmp_path, wayland=True, available={"xdotool", "ydotool"}
+    )
+
+    result = await server._run_shortcut("XF86Xfer")
+
+    assert result == {"ok": True, "detail": "xdotool"}
+    assert calls == [["xdotool", "key", "XF86Xfer"]]

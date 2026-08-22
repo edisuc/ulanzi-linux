@@ -38,7 +38,11 @@ from ulanzi_linux.domain.button_config import (
     ShortcutAction,
     UrlAction,
 )
-from ulanzi_linux.infrastructure.keysym_evdev import translate_shortcut
+from ulanzi_linux.application.shortcut_backend import (
+    is_wayland_session,
+    shortcut_argv,
+    shortcut_tool_order,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -257,37 +261,13 @@ class ActionRunner:
         self._track_background_task(wait_task)
 
     def _is_wayland_session(self) -> bool:
-        if self._env.get("WAYLAND_DISPLAY"):
-            return True
-        return self._env.get("XDG_SESSION_TYPE", "").lower() == "wayland"
+        return is_wayland_session(self._env)
 
     def _shortcut_tool_order(self) -> tuple[str, ...]:
-        """Rank the shortcut backends for the current session.
-
-        Under Wayland ``xdotool`` still runs and still exits 0, but the
-        compositor only routes its synthetic events to XWayland clients — so a
-        shortcut aimed at a native Wayland application is silently dropped
-        while the log claims success. ``ydotool`` writes to ``/dev/uinput``,
-        below the display server, and therefore reaches every client; it goes
-        first there. On X11 ``xdotool`` leads because it consumes keysym names
-        directly, with no translation step that could lose fidelity.
-        """
-        if self._is_wayland_session():
-            return ("ydotool", "xdotool", "wtype")
-        return ("xdotool", "ydotool", "wtype")
+        return shortcut_tool_order(self._env)
 
     def _shortcut_argv(self, tool: str, keys: str) -> list[str] | None:
-        """Build the argv for ``tool``, or ``None`` if it cannot express ``keys``."""
-        if tool == "xdotool":
-            return ["xdotool", "key", keys]
-        if tool == "ydotool":
-            # ydotool speaks raw evdev codes, never keysym names.
-            codes = translate_shortcut(keys)
-            return ["ydotool", "key", *codes] if codes else None
-        if tool == "wtype":
-            # wtype uses different syntax; best-effort approximation.
-            return ["wtype", "-M", keys]
-        return None
+        return shortcut_argv(tool, keys)
 
     async def _run_shortcut(self, action: ShortcutAction) -> None:
         logger.info("action_shortcut", keys=action.keys)
