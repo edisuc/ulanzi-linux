@@ -75,7 +75,9 @@ DEFAULT_LABEL_STYLE: Final[dict[str, object]] = {
     "Align": "bottom",
     "Color": 0xFFFFFF,
     "FontName": "Roboto",
-    "ShowTitle": True,
+    # Off: label-only buttons arrive as rendered tiles (zip_builder), and the
+    # firmware title would print the label a second time on top of them.
+    "ShowTitle": False,
     "Size": 10,
     "Weight": 80,
 }
@@ -682,7 +684,11 @@ class UlanziD200Device(DeckDevice):
             self._label_style_payload(),
         )
         self._label_style_applied = True
-        logger.info("label_style_set", show_title=True, font_name="Roboto")
+        logger.info(
+            "label_style_set",
+            show_title=DEFAULT_LABEL_STYLE["ShowTitle"],
+            font_name=DEFAULT_LABEL_STYLE["FontName"],
+        )
 
     @staticmethod
     def _label_style_payload() -> bytes:

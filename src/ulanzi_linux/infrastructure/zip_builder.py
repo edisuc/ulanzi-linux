@@ -59,7 +59,7 @@ _FIRST_CHECK_OFFSET = 1016  # last byte of first 1024-byte window, accounting fo
 _INVALID_BOUNDARY_BYTES = (b"\x00", b"\x7c")
 _MAX_DUMMY_RETRIES = 1024
 _REAL_ICON_PADDING = 5
-_TEXT_TILE_PADDING = 16
+_TEXT_TILE_PADDING = 8
 _TEXT_TILE_MAX_WIDTH = ICON_SIZE[0] - (_TEXT_TILE_PADDING * 2)
 _TEXT_TILE_MAX_HEIGHT = ICON_SIZE[1] - (_TEXT_TILE_PADDING * 2)
 _INFO_WINDOW_PADDING = 24
@@ -263,11 +263,16 @@ def _fit_text_layout(
     return font, lines, 4
 
 
-def _render_text_icon(cfg: ButtonConfig) -> bytes:
-    style = cfg.text_style
+def render_text_tile(label: str, style: TextStyle) -> tuple[bytes, int]:
+    """Draw a label-only button exactly as the deck receives it.
+
+    Returns the PNG and the font size actually used, which is below
+    ``style.font_size`` whenever the text had to shrink to fit the key. The
+    editor shows this same PNG, so its preview cannot drift from the deck.
+    """
     img = Image.new("RGBA", ICON_SIZE, _hex_to_rgba(style.background_color))
     draw = ImageDraw.Draw(img)
-    font, lines, spacing = _fit_text_layout(cfg.label, style)
+    font, lines, spacing = _fit_text_layout(label, style)
     boxes = [draw.textbbox((0, 0), line, font=font) for line in lines]
     heights = [box[3] - box[1] for box in boxes]
     total_height = sum(heights) + spacing * max(0, len(lines) - 1)
@@ -289,13 +294,17 @@ def _render_text_icon(cfg: ButtonConfig) -> bytes:
                     underline_y,
                 ),
                 fill=fill,
-                width=max(1, style.font_size // 18),
+                width=max(1, int(getattr(font, "size", style.font_size)) // 18),
             )
         current_y += height + spacing
 
     buf = io.BytesIO()
     img.save(buf, format="PNG")
-    return buf.getvalue()
+    return buf.getvalue(), int(getattr(font, "size", 12))
+
+
+def _render_text_icon(cfg: ButtonConfig) -> bytes:
+    return render_text_tile(cfg.label, cfg.text_style)[0]
 
 
 def _render_info_window_text(cfg: ButtonConfig) -> bytes:
@@ -456,8 +465,21 @@ def _archive_icon_name(cfg: ButtonConfig) -> str:
     return f"icons/{int(cfg.index)}-{digest}.png"
 
 
+def _is_text_tile(cfg: ButtonConfig) -> bool:
+    """A label-only button, drawn host-side so ``text_style`` reaches the deck.
+
+    Left to the firmware, the label is drawn in its own small fixed font and
+    ``font_size``, colours, bold/italic/underline are all ignored.
+    """
+    return bool(cfg.label) and not _has_real_icon(cfg)
+
+
 def _needs_icon_asset(cfg: ButtonConfig) -> bool:
-    return int(cfg.index) == _INFO_WINDOW_INDEX or _has_real_icon(cfg)
+    return (
+        int(cfg.index) == _INFO_WINDOW_INDEX
+        or _has_real_icon(cfg)
+        or _is_text_tile(cfg)
+    )
 
 
 def _build_manifest(configs: list[ButtonConfig]) -> dict:
@@ -475,10 +497,13 @@ def _build_manifest(configs: list[ButtonConfig]) -> dict:
                 "ViewParam": [view_param],
             }
             continue
-        has_real_icon = _has_real_icon(cfg)
-        if cfg.label and not has_real_icon:
+        # A text tile still carries ``Text``: without it the validated
+        # firmware leaves the button blank. The firmware's own title overlay
+        # is switched off (``ShowTitle`` in the label style), so the label is
+        # not drawn a second time over the rendered tile.
+        if _is_text_tile(cfg):
             view_param["Text"] = cfg.label
-        if has_real_icon:
+        if _has_real_icon(cfg) or _is_text_tile(cfg):
             view_param["Icon"] = _archive_icon_name(cfg)
         manifest[f"{col}_{row}"] = {
             "State": 0,

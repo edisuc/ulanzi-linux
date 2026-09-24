@@ -586,3 +586,31 @@ def test_index_and_static_are_served(client: tuple[TestClient, Path]) -> None:
     assert "Clique em Salvar no deck para aplicar." in r.text
     assert "predefined_command" in r.text
     assert "await this.saveDeck();" not in r.text
+
+
+def test_text_tile_reports_when_the_label_had_to_shrink(
+    client: tuple[TestClient, Path],
+) -> None:
+    test_client, _ = client
+
+    fits = test_client.post(
+        "/api/text-tile", json={"label": "A", "text_style": {"font_size": 40}}
+    ).json()
+    shrunk = test_client.post(
+        "/api/text-tile", json={"label": "Pages", "text_style": {"font_size": 96}}
+    ).json()
+
+    assert fits["image"].startswith("data:image/png;base64,")
+    assert fits["drawn_font_size"] == fits["requested_font_size"] == 40
+    assert shrunk["requested_font_size"] == 96
+    assert shrunk["drawn_font_size"] < 96
+
+
+def test_text_tile_rejects_out_of_range_font_size(
+    client: tuple[TestClient, Path],
+) -> None:
+    test_client, _ = client
+    response = test_client.post(
+        "/api/text-tile", json={"label": "A", "text_style": {"font_size": 500}}
+    )
+    assert response.status_code == 422

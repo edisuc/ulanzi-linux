@@ -27,6 +27,7 @@ Design decisions:
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import mimetypes
@@ -77,7 +78,7 @@ from ulanzi_linux.infrastructure.system_metrics import (
     ProcSystemMetrics,
 )
 from ulanzi_linux.infrastructure.ulanzi_d200 import D200_SPEC
-from ulanzi_linux.infrastructure.zip_builder import ICON_SIZE
+from ulanzi_linux.infrastructure.zip_builder import ICON_SIZE, render_text_tile
 from ulanzi_linux.interface.web.i18n import (
     DEFAULT_LANGUAGE,
     SOURCE_LANGUAGE,
@@ -106,6 +107,8 @@ from ulanzi_linux.interface.web.models import (
     PageSummary,
     SmallWindowPreviewMetric,
     SmallWindowPreviewResponse,
+    TextTileRequest,
+    TextTileResponse,
     ValidationSummary,
 )
 
@@ -964,6 +967,20 @@ def create_app(config_path: Path, *, language: str | None = None) -> FastAPI:
         return AssetUploadResponse(
             path=compact,
             preview_url=_asset_preview_url(compact) or "",
+        )
+
+    @app.post("/api/text-tile", response_model=TextTileResponse)
+    def post_text_tile(req: TextTileRequest) -> TextTileResponse:
+        """Render a label-only button with the deck's own renderer."""
+        try:
+            style = TextStyle(**req.text_style.model_dump())
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        png, drawn_font_size = render_text_tile(req.label, style)
+        return TextTileResponse(
+            image="data:image/png;base64," + base64.b64encode(png).decode("ascii"),
+            requested_font_size=style.font_size,
+            drawn_font_size=drawn_font_size,
         )
 
     @app.get("/api/asset")

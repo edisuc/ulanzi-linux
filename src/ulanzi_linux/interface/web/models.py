@@ -201,6 +201,21 @@ class BuiltinAssetImportRequest(BaseModel):
     asset_id: str
 
 
+class TextTileRequest(BaseModel):
+    """A label-only button to render the way the deck will show it."""
+
+    label: str
+    text_style: EditorTextStyleModel = Field(default_factory=EditorTextStyleModel)
+
+
+class TextTileResponse(BaseModel):
+    """The rendered tile plus the font size it really got."""
+
+    image: str
+    requested_font_size: int
+    drawn_font_size: int
+
+
 class SmallWindowPreviewResponse(BaseModel):
     """Live preview payload for the small-window simulator."""
 

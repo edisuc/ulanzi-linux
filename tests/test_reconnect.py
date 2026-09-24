@@ -169,7 +169,7 @@ async def test_first_button_upload_applies_default_label_style() -> None:
     ]
     payloads = _framed_payloads(transport.writes)
     label_style = json.loads(payloads[0].decode("utf-8"))
-    assert label_style["ShowTitle"] is True
+    assert label_style["ShowTitle"] is False
 
 
 @pytest.mark.asyncio
