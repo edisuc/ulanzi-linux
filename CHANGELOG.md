@@ -7,6 +7,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] — 2026-09-24
+
+### Changed
+
+- Label-only buttons are uploaded as rendered tiles again, so `text_style`
+  (font size, colours, bold/italic/underline, family) actually reaches the
+  deck. Since 0.6.0 they had been sent as bare `Text`, which the firmware
+  draws in its own small fixed font whatever the style said. The manifest
+  keeps `Text` next to the tile (without it the firmware leaves the button
+  blank), and the label style now sends `ShowTitle: false` so the label is
+  not drawn a second time over the tile.
+- Text tiles use an 8 px inner margin instead of 16 px, so a five-letter word
+  such as "Pages" can be drawn at 60 instead of 54.
+- The editor's text-only previews — deck and inspector — are now the PNG the
+  deck receives, rendered by the new `POST /api/text-tile` endpoint. When the
+  label had to shrink to fit, the size control says "Drawn at N, the largest
+  size that fits". The CSS approximation it replaces broke words mid-word
+  and never shrank, so it showed layouts the deck never draws.
+- Deck and inspector previews are square, like the keys; the small window
+  keeps its wide frame.
+- `ulanzi-linux desktop` follows the system locale (`$LANGUAGE`, `$LC_ALL`,
+  `$LC_MESSAGES`, `$LANG`) and accepts `--lang` / `$ULANZI_LANG`, like `gui`.
+  The embedded webview sends no useful `Accept-Language`, so the desktop
+  editor always opened in Portuguese.
+- The built-in icon catalogue loads 120 more results each time its grid is
+  scrolled near the bottom, instead of stopping at the first 120; the summary
+  counts matches rather than the whole catalogue.
+
+### Fixed
+
+- The desktop editor was very slow: selecting a button took 1–2 s and the
+  first search keystroke up to 3 s. Its Qt 5.15 WebEngine re-rasterised the
+  page's three radial-gradient backgrounds across the whole document on
+  nearly every change; they now sit on a fixed composited layer (~80 ms per
+  selection). Catalogue search also lowercases and splits every entry once at
+  load instead of on every keystroke, reuses its result across the grid,
+  summary and scroll loader, and keeps the entries out of Alpine's
+  reactivity.
+- In the desktop window the icon catalogue showed only thin lines: its square
+  cards relied on CSS `aspect-ratio`, which Qt 5.15 WebEngine (Chromium 87)
+  predates. They now use the padding-top technique.
+- The catalogue's "All" filter was untranslated ("Todos").
+- The `label_style_set` log line always reported `show_title: true`; it now
+  reports the value actually sent.
+
 ## [0.15.2] — 2026-08-22
 
 ### Fixed

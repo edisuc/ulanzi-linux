@@ -50,7 +50,7 @@ const ACTION_LABELS = Object.freeze({
 });
 
 const BUILTIN_ICON_STYLES = Object.freeze([
-    { value: "all", label: "Todos" },
+    { value: "all", label: t("Todos") },
     { value: "brands", label: t("Apps/brands") },
     { value: "emoji", label: "Emojis" },
     { value: "regular", label: "Regular" },
@@ -84,8 +84,13 @@ function emptyAction() {
 //: Where the next picked icon lands: the button's own face.
 const BUTTON_ICON_TARGET = null;
 
-//: How many catalogue results the grid renders at once.
+//: How many catalogue results the grid renders at first, and how many more
+//: each time it is scrolled near the bottom. Every card is a server-rendered
+//: PNG, so drawing all ~4000 up front would stall the window.
 const BUILTIN_ICON_RESULT_LIMIT = 120;
+
+//: How close to the bottom of the grid (px) the next batch starts loading.
+const BUILTIN_ICON_LOAD_MARGIN = 300;
 
 //: Sentinel score meaning "this icon does not match at all".
 const NO_MATCH = Number.POSITIVE_INFINITY;
@@ -103,8 +108,7 @@ function iconWords(value) {
  * word, and the icon's own name beats its keywords.
  */
 function builtinIconScore(icon, query) {
-    const name = String(icon.name || "").toLowerCase();
-    const terms = (icon.search_terms || []).map((term) => String(term).toLowerCase());
+    const { name, nameWords, terms, termWords, family } = (icon.search || indexBuiltinIcon(icon).search);
 
     if (name === query) {
         return 0;
@@ -112,13 +116,13 @@ function builtinIconScore(icon, query) {
     if (name.startsWith(query)) {
         return 1;
     }
-    if (iconWords(name).some((word) => word.startsWith(query))) {
+    if (nameWords.some((word) => word.startsWith(query))) {
         return 2;
     }
     if (terms.some((term) => term === query)) {
         return 3;
     }
-    if (terms.some((term) => iconWords(term).some((word) => word.startsWith(query)))) {
+    if (termWords.some((word) => word.startsWith(query))) {
         return 4;
     }
     if (name.includes(query)) {
@@ -127,11 +131,38 @@ function builtinIconScore(icon, query) {
     if (terms.some((term) => term.includes(query))) {
         return 6;
     }
-    if (String(icon.family || "").toLowerCase().includes(query)) {
+    if (family.includes(query)) {
         return 7;
     }
     return NO_MATCH;
 }
+
+/**
+ * Freeze a catalogue entry with its search fields lowercased and split once.
+ *
+ * Frozen objects are left alone by Alpine's reactivity, so the ~4000 entries
+ * are not wrapped in tracking proxies, and scoring a keystroke no longer
+ * re-lowercases and re-splits every name and keyword.
+ */
+function indexBuiltinIcon(icon) {
+    const name = String(icon.name || "").toLowerCase();
+    const terms = (icon.search_terms || []).map((term) => String(term).toLowerCase());
+    return Object.freeze({
+        ...icon,
+        search: Object.freeze({
+            name,
+            nameWords: iconWords(name),
+            terms,
+            termWords: terms.flatMap(iconWords),
+            family: String(icon.family || "").toLowerCase(),
+        }),
+    });
+}
+
+//: Last catalogue search, reused while its inputs are unchanged. Alpine
+//: re-reads a getter every time a template touches it, and the grid, the
+//: summary and the scroll loader all do, so this saves repeat scoring.
+let builtinIconMatchCache = { icons: null, query: null, style: null, result: [] };
 
 function emptyTextStyle() {
     return {
@@ -206,6 +237,10 @@ window.editorApp = function editorApp() {
         builtinIcons: [],
         builtinIconQuery: "",
         builtinIconStyle: "all",
+        builtinIconLimit: BUILTIN_ICON_RESULT_LIMIT,
+        // Server-rendered text tiles, keyed by label + style. The deck gets
+        // these exact PNGs, so the previews show what the keys will show.
+        textTiles: {},
         showBuiltinIconBrowser: false,
         // null = the button's own icon; a number = that cycle step's icon.
         // Both the file picker and the built-in catalogue write here, so one
@@ -213,6 +248,15 @@ window.editorApp = function editorApp() {
         iconTarget: BUTTON_ICON_TARGET,
 
         async init() {
+            // A new search or filter starts again from the first batch.
+            const resetBuiltinIconLimit = () => {
+                this.builtinIconLimit = BUILTIN_ICON_RESULT_LIMIT;
+                if (this.$refs.builtinGrid) {
+                    this.$refs.builtinGrid.scrollTop = 0;
+                }
+            };
+            this.$watch("builtinIconQuery", resetBuiltinIconLimit);
+            this.$watch("builtinIconStyle", resetBuiltinIconLimit);
             await this.refreshHealth();
             await this.loadBuiltinIcons();
             await this.loadEditor();
@@ -247,7 +291,7 @@ window.editorApp = function editorApp() {
                 if (!response.ok) {
                     throw new Error(payload.detail || payload.error || t("Falha ao carregar catálogo"));
                 }
-                this.builtinIcons = payload.items || [];
+                this.builtinIcons = Object.freeze((payload.items || []).map(indexBuiltinIcon));
             } catch (error) {
                 this.builtinIcons = [];
                 this.setStatus(t("Catálogo embutido indisponível: {0}", error.message), "warn");
@@ -680,6 +724,55 @@ window.editorApp = function editorApp() {
             );
         },
 
+        textTileKey(label, style) {
+            return JSON.stringify([label || "", this.normalizeTextStyle(style)]);
+        },
+
+        /** The deck's own rendering of a text-only button, or null while it loads. */
+        textTileFor(label, style) {
+            const key = this.textTileKey(label, style);
+            const tile = this.textTiles[key];
+            if (tile === undefined) {
+                // Mark it pending so every template reading it asks only once.
+                this.textTiles[key] = null;
+                void this.loadTextTile(key, label, style);
+                return null;
+            }
+            return tile;
+        },
+
+        async loadTextTile(key, label, style) {
+            try {
+                const response = await fetch("/api/text-tile", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        label: label || "",
+                        text_style: this.normalizeTextStyle(style),
+                    }),
+                });
+                if (!response.ok) {
+                    throw new Error(await response.text());
+                }
+                this.textTiles[key] = await response.json();
+            } catch (_error) {
+                // Forget it, so a later render can try again.
+                delete this.textTiles[key];
+            }
+        },
+
+        get currentTextTile() {
+            if (!this.currentTextOnlyPreview) {
+                return null;
+            }
+            return this.textTileFor(this.buttonForm.label, this.buttonForm.text_style);
+        },
+
+        get currentTextTileShrunk() {
+            const tile = this.currentTextTile;
+            return Boolean(tile && tile.drawn_font_size < tile.requested_font_size);
+        },
+
         tileStyleFor(style) {
             const normalized = this.normalizeTextStyle(style);
             return {
@@ -973,13 +1066,23 @@ window.editorApp = function editorApp() {
             return this.buttonPreviewUrl(this.buttonForm);
         },
 
-        get filteredBuiltinIcons() {
+        get matchingBuiltinIcons() {
             const query = (this.builtinIconQuery || "").trim().toLowerCase();
             const style = this.builtinIconStyle || "all";
-            const styled = (this.builtinIcons || [])
-                .filter((icon) => style === "all" || icon.style === style);
+            const icons = this.builtinIcons || [];
+            const cache = builtinIconMatchCache;
+            if (cache.icons === icons && cache.query === query && cache.style === style) {
+                return cache.result;
+            }
+            const result = this.scoreBuiltinIcons(icons, query, style);
+            builtinIconMatchCache = { icons, query, style, result };
+            return result;
+        },
+
+        scoreBuiltinIcons(icons, query, style) {
+            const styled = icons.filter((icon) => style === "all" || icon.style === style);
             if (!query) {
-                return styled.slice(0, BUILTIN_ICON_RESULT_LIMIT);
+                return styled;
             }
             return styled
                 .map((icon) => ({ icon, score: builtinIconScore(icon, query) }))
@@ -987,14 +1090,30 @@ window.editorApp = function editorApp() {
                 // Ties keep the catalogue's own order, so results are stable
                 // as you type rather than reshuffling on every keystroke.
                 .sort((a, b) => a.score - b.score)
-                .slice(0, BUILTIN_ICON_RESULT_LIMIT)
                 .map((scored) => scored.icon);
         },
 
+        get filteredBuiltinIcons() {
+            return this.matchingBuiltinIcons.slice(0, this.builtinIconLimit);
+        },
+
         get builtinIconSummary() {
-            const total = (this.builtinIcons || []).length;
-            const visible = this.filteredBuiltinIcons.length;
-            return t("{0} de {1} assets embutidos", visible, total);
+            const matching = this.matchingBuiltinIcons.length;
+            const visible = Math.min(this.builtinIconLimit, matching);
+            if (visible < matching) {
+                return t("{0} de {1} assets embutidos — role para ver mais", visible, matching);
+            }
+            return t("{0} de {1} assets embutidos", visible, matching);
+        },
+
+        loadMoreBuiltinIconsIfNearEnd(grid) {
+            if (this.builtinIconLimit >= this.matchingBuiltinIcons.length) {
+                return;
+            }
+            const remaining = grid.scrollHeight - grid.scrollTop - grid.clientHeight;
+            if (remaining < BUILTIN_ICON_LOAD_MARGIN) {
+                this.builtinIconLimit += BUILTIN_ICON_RESULT_LIMIT;
+            }
         },
 
         get currentTextOnlyPreview() {

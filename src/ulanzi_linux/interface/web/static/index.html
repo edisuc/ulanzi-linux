@@ -144,8 +144,11 @@
               </template>
               <template x-if="slot.kind !== 'info' && !slot.preview_url && slot.textOnly">
                 <div class="deck-text-tile" :style="tileStyleFor(slot.text_style)">
-                  <span :style="textStyleFor(slot.text_style)"
-                        x-text="slot.label"></span>
+                  <template x-if="textTileFor(slot.label, slot.text_style)">
+                    <img class="deck-icon"
+                         :src="textTileFor(slot.label, slot.text_style).image"
+                         :alt="slot.label" />
+                  </template>
                 </div>
               </template>
               <template x-if="slot.kind !== 'info' && !slot.preview_url && !slot.textOnly">
@@ -216,8 +219,9 @@
             </template>
             <template x-if="!currentPreviewUrl && currentTextOnlyPreview">
               <div class="text-tile-preview" :style="currentTextTileStyle">
-                <span :style="currentTextLabelStyle"
-                      x-text="buttonForm.label"></span>
+                <template x-if="currentTextTile">
+                  <img :src="currentTextTile.image" :alt="buttonForm.label" />
+                </template>
               </div>
             </template>
             <template x-if="!currentPreviewUrl">
@@ -268,7 +272,9 @@
 
             <p class="muted compact-copy" x-text="builtinIconSummary"></p>
 
-            <div class="builtin-grid">
+            <div class="builtin-grid"
+                 x-ref="builtinGrid"
+                 @scroll.passive="loadMoreBuiltinIconsIfNearEnd($el)">
               <template x-for="icon in filteredBuiltinIcons" :key="icon.asset_id">
                 <button type="button"
                         class="builtin-icon-card"
@@ -438,6 +444,11 @@
                      x-model="buttonForm.text_style.font_size"
                      @input="syncSelectedButton()" />
             </div>
+            <small class="muted"
+                   x-show="currentTextTileShrunk"
+                   x-text="currentTextTileShrunk
+                       ? t('Desenhado em {0}, o maior tamanho que cabe', currentTextTile.drawn_font_size)
+                       : ''"></small>
           </label>
         </div>
 

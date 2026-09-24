@@ -21,7 +21,8 @@
     --font-sans: "Alegreya Sans", "IBM Plex Sans", "DejaVu Sans", sans-serif;
     --font-mono: "IBM Plex Mono", "JetBrains Mono", "DejaVu Sans Mono", monospace;
     --deck-slot-size: 114px;
-    --deck-icon-height: 62px;
+    /* Keys are square on the deck, so their previews are square too. */
+    --deck-icon-size: 88px;
     --deck-gap: 0.85rem;
 }
 
@@ -33,11 +34,7 @@ html,
 body {
     margin: 0;
     min-height: 100%;
-    background:
-        radial-gradient(circle at top left, rgba(121, 221, 248, 0.16), transparent 24%),
-        radial-gradient(circle at 85% 0%, rgba(243, 201, 108, 0.12), transparent 18%),
-        radial-gradient(circle at bottom right, rgba(114, 223, 178, 0.10), transparent 24%),
-        var(--bg);
+    background: var(--bg);
     color: var(--text);
     font-family: var(--font-sans);
 }
@@ -45,6 +42,23 @@ body {
 body {
     min-height: 100vh;
     position: relative;
+}
+
+/* The glow sits on its own fixed, composited layer rather than on html/body.
+   Painted on the page itself, the desktop window's Qt 5.15 WebEngine
+   re-rasterised all three gradients across the whole document on nearly
+   every change: selecting a button took ~1 s there, ~75 ms without it. */
+body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    will-change: transform;
+    background:
+        radial-gradient(circle at top left, rgba(121, 221, 248, 0.16), transparent 24%),
+        radial-gradient(circle at 85% 0%, rgba(243, 201, 108, 0.12), transparent 18%),
+        radial-gradient(circle at bottom right, rgba(114, 223, 178, 0.10), transparent 24%);
 }
 
 body::before {
@@ -377,7 +391,7 @@ textarea {
 .deck-grid {
     display: grid;
     grid-template-columns: repeat(5, var(--deck-slot-size));
-    grid-auto-rows: var(--deck-slot-size);
+    grid-auto-rows: minmax(var(--deck-slot-size), auto);
     gap: var(--deck-gap);
     width: max-content;
     margin: 0 auto;
@@ -396,7 +410,6 @@ textarea {
         linear-gradient(180deg, rgba(86, 194, 255, 0.14), rgba(86, 194, 255, 0.03)),
         linear-gradient(180deg, #33475e, #203142);
     min-height: var(--deck-slot-size);
-    height: var(--deck-slot-size);
 }
 
 .deck-button.empty {
@@ -417,7 +430,6 @@ textarea {
 
 .deck-button.wide {
     min-height: var(--deck-slot-size);
-    height: var(--deck-slot-size);
 }
 
 .deck-chip {
@@ -432,8 +444,9 @@ textarea {
 }
 
 .deck-icon-frame {
-    width: 100%;
-    height: var(--deck-icon-height);
+    justify-self: center;
+    width: var(--deck-icon-size);
+    height: var(--deck-icon-size);
     border-radius: 14px;
     overflow: hidden;
     background: rgba(0, 0, 0, 0.18);
@@ -441,8 +454,10 @@ textarea {
     place-items: center;
 }
 
+/* The small window really is wide (2:1), so it keeps the full slot width. */
 .deck-button.wide .deck-icon-frame {
-    height: var(--deck-icon-height);
+    width: 100%;
+    height: var(--deck-icon-size);
 }
 
 .deck-icon {
@@ -524,9 +539,16 @@ textarea {
     display: grid;
     place-items: center;
     border-radius: 16px;
-    padding: 0.7rem;
+    padding: 0;
     text-align: center;
     overflow: hidden;
+}
+
+.deck-text-tile img,
+.text-tile-preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
 }
 
 .deck-text-tile span,
@@ -657,7 +679,9 @@ textarea {
     border-radius: var(--radius-sm);
     border: 1px dashed rgba(255, 255, 255, 0.12);
     background: rgba(255, 255, 255, 0.04);
-    min-height: 132px;
+    /* Fixed square, like the key itself. */
+    width: 132px;
+    height: 132px;
     display: grid;
     place-items: center;
     overflow: hidden;
@@ -787,24 +811,28 @@ textarea {
     background-clip: content-box;
 }
 
+/* Square cards via the padding-top trick rather than `aspect-ratio`: the
+   desktop window runs Qt 5.15 WebEngine (Chromium 87), which predates
+   `aspect-ratio`, and there the cards collapsed to their borders. */
 .builtin-icon-card {
-    display: grid;
-    place-items: center;
+    display: block;
     padding: 0;
     border-radius: 14px;
-    aspect-ratio: 1;
 }
 
 .builtin-icon-frame {
+    position: relative;
+    display: block;
     width: 100%;
-    height: 100%;
-    display: grid;
-    place-items: center;
+    padding-top: 100%;
     border-radius: 12px;
     background: rgba(8, 13, 18, 0.58);
 }
 
 .builtin-icon-frame img {
+    position: absolute;
+    top: 9%;
+    left: 9%;
     width: 82%;
     height: 82%;
     object-fit: contain;
@@ -951,7 +979,7 @@ textarea {
 
     :root {
         --deck-slot-size: 102px;
-        --deck-icon-height: 56px;
+        --deck-icon-size: 78px;
         --deck-gap: 0.7rem;
     }
 

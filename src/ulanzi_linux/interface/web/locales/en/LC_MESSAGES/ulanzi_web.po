@@ -418,6 +418,15 @@ msgstr "Info window · touch action"
 msgid "{0} de {1} assets embutidos"
 msgstr "{0} of {1} built-in assets"
 
+msgid "{0} de {1} assets embutidos — role para ver mais"
+msgstr "{0} of {1} built-in assets — scroll for more"
+
+msgid "Todos"
+msgstr "All"
+
+msgid "Desenhado em {0}, o maior tamanho que cabe"
+msgstr "Drawn at {0}, the largest size that fits"
+
 msgid "relógio ↔ métricas · {0}s"
 msgstr "clock ↔ metrics · {0}s"
 
