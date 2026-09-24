@@ -539,6 +539,7 @@
                x-model="editor.small_window.time_format"
                @input="dirty = true"
                placeholder="%H:%M" />
+        <small class="muted" x-show="!usesCustomSmallWindowMetrics">O relógio do próprio deck mostra sempre HH:MM:SS; este formato vale só para a faixa de métricas personalizadas.</small>
       </label>
 
       <label class="field">

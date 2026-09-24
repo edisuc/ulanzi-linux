@@ -149,6 +149,7 @@ def _cfg_with_small_window(
     show_metrics: bool = True,
     rotate_every_s: float | None = None,
     metrics_items: tuple[str, ...] = (),
+    time_format: str = "%H:%M",
 ) -> DeckConfig:
     return DeckConfig(
         pages={
@@ -161,7 +162,7 @@ def _cfg_with_small_window(
         small_window=SmallWindowConfig(
             enabled=enabled,
             interval_s=interval_s,
-            time_format="%H:%M",
+            time_format=time_format,
             show_metrics=show_metrics,
             rotate_every_s=rotate_every_s,
             metrics_items=metrics_items,
@@ -315,7 +316,8 @@ async def test_small_window_loop_pushes_cpu_mem_time() -> None:
     assert last["mem"] == 42
     assert last["gpu"] == 0
     assert last["time_str"] == "14:32:00"
-    assert metrics.last_format_fmt == "%H:%M"
+    # The firmware clock takes only HH:MM:SS, whatever time_format says.
+    assert metrics.last_format_fmt == "%H:%M:%S"
     # Heartbeat must NOT have run — small_window subsumes it.
     assert fake.keep_alive_calls == 0
 
@@ -403,6 +405,42 @@ async def test_small_window_can_run_in_time_only_mode() -> None:
     assert last["time_str"] == "14:32:00"
     assert fake.keep_alive_calls == 0
     assert metrics.mem_reads == 0
+
+
+@pytest.mark.asyncio
+async def test_native_clock_always_gets_hh_mm_ss_whatever_time_format() -> None:
+    """The firmware ignores any other time text and runs its own counter.
+
+    With ``%d/%m %H:%M`` the deck was sent ``24/09 14:32``, dropped it, and
+    showed the time since it powered up (starting at 0:00) instead.
+    """
+
+    class DatedMetrics(FakeMetrics):
+        def format_time(self, fmt: str) -> str:
+            return {"%d/%m %H:%M": "24/09 14:32", "%H:%M:%S": "14:32:07"}.get(fmt, "??")
+
+    fake = RecordingFakeDeck()
+    metrics = DatedMetrics(cpu_values=[0, 42, 42, 42], mem=61)
+    cfg = _cfg_with_small_window(
+        enabled=True,
+        interval_s=0.05,
+        show_metrics=True,
+        rotate_every_s=0.05,
+        time_format="%d/%m %H:%M",
+    )
+
+    async with DeckService.open_default(factory=lambda: cast(DeckDevice, fake)) as svc:
+        daemon = DeckDaemon(svc, cfg, metrics_reader=metrics)
+        stop = asyncio.Event()
+
+        async def _stop_after() -> None:
+            await asyncio.sleep(0.25)
+            stop.set()
+
+        await asyncio.gather(daemon.run(stop_event=stop), _stop_after())
+
+    assert fake.small_window_data_calls
+    assert {call["time_str"] for call in fake.small_window_data_calls} == {"14:32:07"}
 
 
 @pytest.mark.asyncio

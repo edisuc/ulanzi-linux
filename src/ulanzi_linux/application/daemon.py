@@ -488,6 +488,17 @@ class DeckDaemon:
             if key in live
         }
 
+    def _native_clock_time_string(self) -> str:
+        """The time for the firmware's own CLOCK / STATS layouts.
+
+        The D200 firmware only takes ``HH:MM:SS`` here. Anything else, such as
+        ``24/09 16:47`` from a ``%d/%m %H:%M`` format, is silently ignored and
+        the device shows its internal counter instead, which starts at 0:00
+        when the deck powers up. ``time_format`` therefore applies only where
+        the host renders the clock itself (the custom strip).
+        """
+        return self._metrics_reader.format_time("%H:%M:%S")
+
     def _wire_time_string(self, configured_format: str) -> str:
         rendered = self._metrics_reader.format_time(configured_format)
         if _looks_like_hhmm(rendered):
@@ -623,7 +634,7 @@ class DeckDaemon:
                             if active_mode == SmallWindowMode.STATS:
                                 cpu: int | None = self._metrics_reader.read_cpu_percent()
                                 mem: int | None = self._metrics_reader.read_memory_percent()
-                                time_str = self._wire_time_string(sw_cfg.time_format)
+                                time_str = self._native_clock_time_string()
                                 await self._service._device.set_small_window_data(
                                     cpu=cpu,
                                     mem=mem,
@@ -631,7 +642,7 @@ class DeckDaemon:
                                     time_str=time_str,
                                 )
                             else:
-                                time_str = self._wire_time_string(sw_cfg.time_format)
+                                time_str = self._native_clock_time_string()
                                 await self._service._device.set_small_window_data(
                                     cpu=0,
                                     mem=0,

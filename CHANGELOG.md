@@ -48,6 +48,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - In the desktop window the icon catalogue showed only thin lines: its square
   cards relied on CSS `aspect-ratio`, which Qt 5.15 WebEngine (Chromium 87)
   predates. They now use the padding-top technique.
+- The deck's clock drifted from the host's whenever `time_format` was not
+  plain `%H:%M` (for instance `%d/%m %H:%M`). The firmware accepts only
+  `HH:MM:SS` in its clock and stats layouts; it silently dropped `24/09
+  16:47` and showed its internal counter, which starts at 0:00 when the deck
+  powers up. The firmware layouts now always get `HH:MM:SS`; `time_format`
+  still applies where the host draws the clock (custom strip, editor
+  preview), and the editor says so next to the field.
 - The catalogue's "All" filter was untranslated ("Todos").
 - The `label_style_set` log line always reported `show_title: true`; it now
   reports the value actually sent.

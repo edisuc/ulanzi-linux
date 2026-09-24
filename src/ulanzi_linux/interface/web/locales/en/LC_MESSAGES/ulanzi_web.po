@@ -424,6 +424,9 @@ msgstr "{0} of {1} built-in assets — scroll for more"
 msgid "Todos"
 msgstr "All"
 
+msgid "O relógio do próprio deck mostra sempre HH:MM:SS; este formato vale só para a faixa de métricas personalizadas."
+msgstr "The deck's own clock always shows HH:MM:SS; this format only applies to the custom metrics strip."
+
 msgid "Desenhado em {0}, o maior tamanho que cabe"
 msgstr "Drawn at {0}, the largest size that fits"
 

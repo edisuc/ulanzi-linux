@@ -71,7 +71,7 @@ the host and uploaded as the wide strip while the device stays pinned to
 | --- | --- | --- | --- |
 | `enabled` | bool | `false` | — |
 | `interval_s` | float | `2.0` | `0.05 ≤ x ≤ 4.5`. Below → busy-loop risk. Above → device falls back to standalone screensaver after the ~5 s firmware watchdog. |
-| `time_format` | string | `"%H:%M"` | Any `strftime` pattern. Keep it short — the firmware uses a larger clock layout when the string is compact. |
+| `time_format` | string | `"%H:%M"` | Any `strftime` pattern, used where the host draws the clock: the custom `metrics_items` strip and the editor preview. The firmware's own clock and stats layouts always get `HH:MM:SS` — the D200 ignores any other time text (a date, for instance) and shows its internal counter instead, which starts at 0:00 when the deck powers up. |
 | `show_metrics` | bool | `true` | `true` shows the stats layout, `false` keeps the plain clock layout. |
 | `rotate_every_s` | float or null | `null` | Optional. When set together with `show_metrics: true`, the daemon alternates clock and stats after this many seconds per mode while still refreshing under `interval_s`. |
 | `background_color` | hex color | `"#000000"` | Optional. Uploaded as a solid background for the wide info strip so the firmware logo can be replaced with a chosen matte color. |
