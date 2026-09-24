@@ -403,7 +403,16 @@ def gui_command(config_path: str, host: str, port: int, lang: str | None) -> Non
 
 @cli.command("desktop")
 @click.argument("config_path", required=False, type=click.Path(dir_okay=False))
-def desktop_command(config_path: str | None) -> None:
+@click.option(
+    "--lang",
+    default=None,
+    envvar="ULANZI_LANG",
+    help=(
+        "UI language (e.g. en, pt_BR). Defaults to the system locale "
+        "($LANGUAGE / $LC_MESSAGES / $LANG). Also read from $ULANZI_LANG."
+    ),
+)
+def desktop_command(config_path: str | None, lang: str | None) -> None:
     """Launch the local editor inside a desktop window."""
     target = config_path or str(DEFAULT_EDITOR_CONFIG_PATH)
     try:
@@ -416,7 +425,7 @@ def desktop_command(config_path: str | None) -> None:
         )
 
     try:
-        launch_desktop_app(target)
+        launch_desktop_app(target, language=lang)
     except ModuleNotFoundError as exc:
         if exc.name and not exc.name.startswith("ulanzi_linux"):
             _bail(

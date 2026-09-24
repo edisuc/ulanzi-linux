@@ -177,8 +177,11 @@ def _reserve_port(host: str) -> int:
 
 
 class _EditorServer:
-    def __init__(self, config_path: Path, *, host: str, port: int) -> None:
+    def __init__(
+        self, config_path: Path, *, host: str, port: int, language: str | None = None
+    ) -> None:
         self.config_path = config_path
+        self.language = language
         self.host = host
         self.port = port
         self._thread: threading.Thread | None = None
@@ -193,7 +196,7 @@ class _EditorServer:
 
         from ulanzi_linux.interface.web.app import create_app
 
-        app = create_app(self.config_path)
+        app = create_app(self.config_path, language=self.language)
         config = uvicorn.Config(
             app,
             host=self.host,
@@ -289,7 +292,22 @@ def _start_tray(url: str, window_holder: dict[str, object | None]) -> object | N
     return icon
 
 
-def launch_desktop_app(config_path: str | Path = DEFAULT_CONFIG_PATH) -> None:
+def _system_language() -> str | None:
+    """The desktop session's UI language, read the way gettext reads it.
+
+    The embedded webview sends no useful ``Accept-Language``, so without this
+    the editor always opens in the source language (pt_BR).
+    """
+    for var in ("LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"):
+        value = os.environ.get(var, "").split(":", 1)[0].split(".", 1)[0]
+        if value and value not in {"C", "POSIX"}:
+            return value
+    return None
+
+
+def launch_desktop_app(
+    config_path: str | Path = DEFAULT_CONFIG_PATH, language: str | None = None
+) -> None:
     _configure_qt_platform()
     _configure_qt_input_method()
     import webview
@@ -299,6 +317,7 @@ def launch_desktop_app(config_path: str | Path = DEFAULT_CONFIG_PATH) -> None:
         resolved_config,
         host=DEFAULT_HOST,
         port=_reserve_port(DEFAULT_HOST),
+        language=language or _system_language(),
     )
     server.start()
 

@@ -9,6 +9,7 @@ from ulanzi_linux.interface.desktop.app import (
     _configure_qt_platform,
     _default_launcher_executable,
     desktop_entry_contents,
+    _system_language,
     install_desktop_launcher,
 )
 
@@ -65,8 +66,8 @@ def test_default_launcher_executable_prefers_current_python_sibling(
 
 
 def test_desktop_command_reports_missing_runtime_dependency(monkeypatch) -> None:
-    def _raise_missing_dependency(config_path: str) -> None:
-        del config_path
+    def _raise_missing_dependency(config_path: str, language: str | None = None) -> None:
+        del config_path, language
         raise ModuleNotFoundError("No module named 'webview'", name="webview")
 
     monkeypatch.setattr(
@@ -99,3 +100,18 @@ def test_configure_qt_platform_preserves_explicit_user_choice(monkeypatch) -> No
     _configure_qt_platform()
 
     assert __import__("os").environ["QT_QPA_PLATFORM"] == "xcb"
+
+
+def test_system_language_follows_locale_env(monkeypatch) -> None:
+    for var in ("LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"):
+        monkeypatch.delenv(var, raising=False)
+    assert _system_language() is None
+
+    monkeypatch.setenv("LANG", "C.UTF-8")
+    assert _system_language() is None
+
+    monkeypatch.setenv("LANG", "en_US.UTF-8")
+    assert _system_language() == "en_US"
+
+    monkeypatch.setenv("LANGUAGE", "pt_BR:en")
+    assert _system_language() == "pt_BR"
